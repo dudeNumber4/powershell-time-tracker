@@ -114,7 +114,7 @@ function ClockOut([string] $comment)
     }
 }
 
-# Returns past Sunday at midnight
+# Returns past Sunday at midnight as DateTime
 function sunday
 {
     $start = [int][DateTime]::Now.DayOfWeek
@@ -163,7 +163,7 @@ function ClockWeekCommented
     "$hours -> $comments"
 }
 
-# returns hours for current week.
+# Returns hours for current week.
 function ClockWeekHours
 {
     $con = get-open-connection
@@ -184,6 +184,27 @@ function ClockWeekHours
             $uncommitedhours = get-uncommitted-hours
             $result = [Math]::Round($result + $uncommitedhours, 2)
         }
+    }
+    $result
+}
+
+# Returns last week's hours (the week prior to last Sunday)
+function ClockLastWeekHours
+{
+    $con = get-open-connection
+    $sunday = sunday
+    $priorSunday = $sunday.AddDays(-7)
+    $cmd = get-command $con "select sum(Hours) from Table1 where (DateTimeIn >= #$priorSunday#) and (DateTimeIn < #$sunday#)"
+    $reader = $cmd.ExecuteReader()
+    $reader.Read() > $null # has rows even when no records!
+    $readerresult = $reader[0]
+    $con.Close()
+    if ($readerresult -is [System.DBNull])
+    {
+        $result = 0
+    } else
+    {
+        $result = [double]$readerresult
     }
     $result
 }
@@ -224,6 +245,7 @@ function ClockStatus
 Export-ModuleMember -function ClockIn
 Export-ModuleMember -function ClockOut
 Export-ModuleMember -function ClockWeekHours
+Export-ModuleMember -function ClockLastWeekHours
 Export-ModuleMember -function ClockStatus
 Export-ModuleMember -Function ClockWeekCommented
 

@@ -5,6 +5,7 @@ Simple time tracking system (tracks hours).  Currently reports time by week.  Co
 * ClockIn.  Start timing a task.  Comment optional.
 * ClockOut.  Stop a task in progress.  Comment optional.  Comment at ClockOut will overwrite ClockIn comment.
 * ClockWeekHours.  Report hours for current week (Sunday - Saturday)
+* ClockLastWeekHours.  Report hours for last week (Sunday - Saturday starting at the Sunday prior to last).  I found myself needing this when working on the weekend.
 * ClockWeekCommented.  Report hours and comments for tasks this week that include comments.  I use this (I add comments) for tasks that I consider a separate "category."
 * ClockStatus.  Report current task and hours taken so far.
 
