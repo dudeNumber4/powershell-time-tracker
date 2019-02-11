@@ -1,246 +1,316 @@
 function get-open-connection
 {
-    $file = 'C:\Data\TimeTracker.accdb'
-    if (Test-Path $file)
-    {
-        $result = New-Object System.Data.OleDb.OleDbConnection
-        $result.ConnectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=$file"
-        $result.Open()
-        $result
-    } else 
-    {
-        throw [System.Exception] "DB file doesn't exist: $file"
-    }
+  $DB_Path = 'C:\Data\TimeTracker.db'
+  if (Test-Path $DB_Path)
+  {
+    $nugetpath = "C:\Data\BatchFiles\PSCore\system.data.sqlite.core\1.0.109.2"
+    Add-Type -Path "$nugetpath\lib\netstandard2.0\System.Data.SQLite.dll"
+    # You can't load this sucker; it's not a CLR assembly.  If windows, it must live in same dir as the CLR assembly (at least for this script it does).
+    #Add-Type -Path "$nugetpath\runtimes\win-x64\native\netstandard2.0\SQLite.Interop.dll"
+    $result = New-Object System.Data.SQLite.SQLiteConnection -ArgumentList "Data Source=$DB_Path;Version=3;"
+    $result.Open() > $null
+    $result
+  } else 
+  {
+    throw [System.Exception] "DB file doesn't exist: $DB_Path"
+  }
 }
 
-function get-command([System.Data.OleDb.OleDbConnection] $con, [string] $cmdText)
+function close-connection([System.Data.SQLite.SQLiteConnection] $con)
 {
-    $result = New-Object System.Data.OleDb.OleDbCommand
-    $result.CommandText = $cmdText
-    $result.Connection = $con
-    $result
+  # https://stackoverflow.com/questions/8511901/system-data-sqlite-close-not-releasing-database-file
+  $con.Close() > $null
+  #$con.Dispose() > $null
+  [System.Data.SQLite.SQLiteConnection]::ClearAllPools() > $null
+  #[GC]::Collect()
+}
+
+function get-command([System.Data.SQLite.SQLiteConnection] $con, [string] $cmdText)
+{
+  New-Object System.Data.SQLite.SQLiteCommand -ArgumentList $cmdText, $con
 }
 
 # Returns true if one (if $onlyone) or any (if not) uncommitted entry(ies) exist(s)
 # If commented true, only if uncommitted entry has a comment.
 function uncommitted-entry([bool] $onlyone, [bool] $commented = $False)
 {
-    $con = get-open-connection
-    $cmd = get-command $con "SELECT 1 FROM Table1 where DateTimeOut Is Null$(if ($commented){' and Comment Is Not Null'})"
+  $con = get-open-connection
+  $cmd = get-command $con "SELECT 1 FROM Table1 where DateTimeOut is null$(if ($commented){' and Comment is not null'});"
 
-    #$reader = $cmd.ExecuteReader([System.Data.CommandBehavior.CloseConnection])  can't be done
-    $reader = $cmd.ExecuteReader() #execute scalar doesn't seem to return anything.  It's not null, blank string, and debugger just shows nothing.
-    # In PowerShell, the results of each statement are returned as output, even without a statement that contains the Return keyword
-    $reader.Read() > $null
-    if ($onlyone)
-    {
-        ($reader.HasRows) -and !($reader.Read())
-    } else
-    {
-        $reader.HasRows # output
-    }
-    $con.Close() > $null
+  #$reader = $cmd.ExecuteReader([System.Data.CommandBehavior.CloseConnection])  can't figger it out.
+  $reader = $cmd.ExecuteReader() #execute scalar doesn't seem to return anything.  It's not null, blank string, and debugger just shows nothing.
+  # In PowerShell, the results of each statement are returned as output, even without a statement that contains the Return keyword
+  $reader.Read() > $null
+  if ($onlyone)
+  {
+    ($reader.HasRows) -and !($reader.Read())
+  } else
+  {
+    $reader.HasRows # output
+  }
+  close-connection $con
 }
 
 # Pre: uncommitted-entry returned true
 # Returns time in, comment (if pass commented)
 function get-uncommitted-details([bool] $commented)
 {
-    $con = get-open-connection
-    $cmd = get-command $con "SELECT DateTimeIn, Comment FROM Table1 where DateTimeOut Is Null$(if ($commented){' and Comment Is Not Null'})"
-    $reader = $cmd.ExecuteReader() #execute scalar doesn't seem to return anything.  It's not null, blank string, and debugger just shows nothing.
-    # In PowerShell, the results of each statement are returned as output, even without a statement that contains the Return keyword
-    $reader.Read() > $null
-    # return hash table.  Array can have different types as well; would just be @($reader[0], $reader[1])
-    @{TimeIn=$reader[0]; Comment=$reader[1]}
-    $con.Close() > $null
+  $con = get-open-connection
+  $cmd = get-command $con "select DateTimeIn, Comment FROM Table1 where DateTimeOut is null$(if ($commented){' and Comment is not null'});"
+  $reader = $cmd.ExecuteReader() #execute scalar doesn't seem to return anything.  It's not null, blank string, and debugger just shows nothing.
+  # In PowerShell, the results of each statement are returned as output, even without a statement that contains the Return keyword
+  $reader.Read() > $null
+  # return hash table.  Array can have different types as well; would just be @($reader[0], $reader[1])
+  @{TimeIn=$reader[0]; Comment=$reader[1]}
+  close-connection $con
+}
+
+# Get unix epoch start time as DateTime.
+function unix-epoch-starting-date-time()
+{
+  New-Object DateTime -ArgumentList 1970, 1, 1
+}
+
+# Get the unix time stamp for the time passed (or UTCNow if none)
+function get-unix-timestamp([System.Nullable``1[[System.DateTime]]] $dt = $null)
+{
+  if ($dt -eq $null)
+  {
+    $dt = [System.DateTime]::UTCNow
+  }
+  $unixStart = unix-epoch-starting-date-time
+  # demonic!  C# would require calling the Value property on the nullable type, but if we do that here, it bombs.
+  [int]($dt.Subtract($unixStart)).TotalSeconds;
+}
+
+# Given a unix numeric time stamp, convert to (optionally, localized) DateTime.
+function unix-stamp-to-date-time([System.Nullable``1[[int]]] $unixStamp = $null, [Boolean] $localize = $False)
+{
+  if ($unixStamp -eq $null)
+  {
+    $unixStamp = get-unix-timestamp
+  }
+  $unixStartDate = unix-epoch-starting-date-time
+  $result = $unixStartDate.AddSeconds($unixStamp);
+  if ($localize)
+  {
+    [System.TimeZoneInfo]::ConvertTimeFromUtc($result, [System.TimeZoneInfo]::Local);
+  }
+  else 
+  {
+    $result
+  }
 }
 
 function ClockIn([string] $comment)
 {
-    if (uncommitted-entry $False)
+  if (uncommitted-entry $False)
+  {
+    throw [System.Exception] "Uncommitted entry(ies).  Fix it."
+  } else
+  {
+    $con = get-open-connection
+    $now = get-unix-timestamp
+    if ($comment)
     {
-        throw [System.Exception] "Uncommitted entry(ies).  Fix it."
+      $cmd = get-command $con "insert into Table1 (DateTimeIn, Comment) values($now, '$comment');"
     } else
     {
-        $con = get-open-connection
-        $now = Get-Date #[System.DateTime]::Now
-        #Double quoted string expand variables and single quoted strings do not.
-        if ($comment)
-        {
-            $cmd = get-command $con "INSERT INTO Table1 (DateTimeIn, Comment) values(#$now#, '$comment')"
-        } else
-        {
-            $cmd = get-command $con "INSERT INTO Table1 (DateTimeIn) values(#$now#)"
-        }
-        $cmd.ExecuteNonQuery() > $null
-        $con.Close()
-        echo 'clocked in'
+      $cmd = get-command $con "insert into Table1 (DateTimeIn) values($now);"
     }
+    $cmd.ExecuteNonQuery() > $null
+    close-connection $con
+    Write-Output 'clocked in'
+  }
 }
 
 # Pre: uncommitted-entry returned true
 function get-uncommitted-hours([bool] $commented = $False)
 {
-    $details = get-uncommitted-details($commented) #Zote: you can't add .TimeIn to this; can't chain like that.
-    $timein = $details.TimeIn
-    $now = [DateTime]::Now
-    $span = $now - [DateTime]$timein
-    [Math]::Round($span.TotalHours, 2)
+  $timeInUnix = (get-uncommitted-details($commented)).TimeIn
+  $now = get-unix-timestamp
+  $span = [System.TimeSpan]::FromSeconds($now - $timeInUnix)
+  [Math]::Round($span.TotalHours, 2)
 }
 
-# ToDo: escape single ticks - blows up the query
+# Pre: one uncommitted entry
 function ClockOut([string] $comment)
 {
-    if (uncommitted-entry $True)
-    {
-        $now = [DateTime]::Now
-        $uncommitedhours = get-uncommitted-hours
-        $con = get-open-connection
+  if (uncommitted-entry $True)
+  {
+    $now = get-unix-timestamp
+    $uncommitedhours = get-uncommitted-hours
+    $con = get-open-connection
 
-        if ($comment)
-        {
-            $cmd = get-command $con "update Table1 set DateTimeOut = #$now#, Hours = $uncommitedhours, Comment = '$comment' where DateTimeOut Is Null"
-        } else
-        {
-            $cmd = get-command $con "update Table1 set DateTimeOut = #$now#, Hours = $uncommitedhours where DateTimeOut Is Null"
-        }
-        $cmd.ExecuteNonQuery() > $null
-        $con.Close()
-        echo 'clocked out, yo.'
+    if ($comment)
+    {
+      $cmd = get-command $con "update Table1 set DateTimeOut = $now, Hours = $uncommitedhours, Comment = '$comment' where DateTimeOut is null;"
     } else
     {
-        throw [System.Exception] "TimeOut: expected one uncommitted entry.  Go fix."
+      $cmd = get-command $con "update Table1 set DateTimeOut = $now, Hours = $uncommitedhours where DateTimeOut is null;"
     }
+    $cmd.ExecuteNonQuery() > $null
+    close-connection $con
+    Write-Host 'clocked out, yo.'
+  } else
+  {
+    throw [System.Exception] "TimeOut: expected one uncommitted entry.  Go fix."
+  }
 }
 
 # Returns past Sunday at midnight as DateTime
 function sunday
 {
-    $start = [int][DateTime]::Now.DayOfWeek
-    $target = 7
-    $result = [DateTime]::Now
-	if ($start -gt $target)
+  $start = [int][DateTime]::UTCNow.DayOfWeek
+  $target = 7
+  $result = [DateTime]::UTCNow
+  if ($start -gt $target)
+  {
+    $result = $result.AddDays($target - $start)
+  } else
+  {
+    if ($start -lt $target)
     {
-		$result = $result.AddDays($target - $start)
+      $result = $result.AddDays($target - $start - 7)
     } else
     {
-	    if ($start -lt $target)
-        {
-		    $result = $result.AddDays($target - $start - 7)
-        } else
-        {
-		    $result = $result.AddDays(-7)
-        }
+      $result = $result.AddDays(-7)
     }
-    $result.Date
+  }
+  $result.Date
 }
 
 # Returns hours, comments for tasks that are commented.
 function ClockWeekCommented
 {
-    $con = get-open-connection
-    $sunday = sunday
-    $hours = 0
-    $comments = ''
-    $cmd = get-command $con "SELECT Hours, Comment FROM Table1 where DateTimeIn >= #$sunday# and Comment <> Null"
-    $reader = $cmd.ExecuteReader()
-    while ($reader.Read())
+  $con = get-open-connection
+  $hours = 0
+  $comments = ''
+  $cmd = get-command $con "select Hours, Comment from Table1 where DateTimeIn >= $(get-unix-timestamp (sunday)) and Comment is not null;"
+  $reader = $cmd.ExecuteReader()
+  while ($reader.Read())
+  {
+    if ($reader[0] -isnot [System.DBNull]) # If current is null, that uncommitted will be added below.
     {
-        $hours = [Math]::Round($hours + $reader[0], 2)
-        if ($comments -ne '')
-        {
-            $comments = "$comments | "
-        }
-        # OTHER strings can be concatenated directly, but this one must be wrapped.
-        $comments = "$comments $($reader[1])"
+      $hours = [Math]::Round($hours + $reader[0], 2)
     }
-    $con.Close() > $null
-    if (uncommitted-entry $True $True) # if uncommitted comment.  Note that you don't comma separate params.  Very strange.
+    if ($comments -ne '')
     {
-        $hours = $hours + (get-uncommitted-hours($True))
+      $comments = "$comments | "
     }
-    "$hours -> $comments"
+    # This string must be wrapped because it's actually an expression.
+    $comments = "$comments $($reader[1])"
+  }
+  close-connection $con
+  if (uncommitted-entry $True $True) # if uncommitted comment.
+  {
+    $hours = $hours + (get-uncommitted-hours($True))
+  }
+  "$hours -> $comments"
 }
 
 # Returns hours for current week.
 function ClockWeekHours
 {
-    $con = get-open-connection
-    $sunday = sunday
-    $cmd = get-command $con "select sum(Hours) from Table1 where DateTimeIn >= #$sunday#"
-    $reader = $cmd.ExecuteReader()
-    $reader.Read() > $null # has rows even when no records!
-    $readerresult = $reader[0]
-    $con.Close()
-    if ($readerresult -is [System.DBNull])
+  $con = get-open-connection
+  $cmd = get-command $con "select sum(Hours) from Table1 where DateTimeIn >= $(get-unix-timestamp (sunday));"
+  $reader = $cmd.ExecuteReader()
+  $reader.Read() > $null # has rows even when no records!
+  $readerresult = $reader[0]
+  close-connection $con
+  if ($readerresult -is [System.DBNull])
+  {
+    $result = 0
+  } else
+  {
+    $result = [double]$readerresult
+    if (uncommitted-entry $False)
     {
-        $result = 0
-    } else
-    {
-        $result = [double]$readerresult
-        if (uncommitted-entry $False)
-        {
-            $uncommitedhours = get-uncommitted-hours
-            $result = [Math]::Round($result + $uncommitedhours, 2)
-        }
+      $result = [Math]::Round($result + (get-uncommitted-hours), 2)
     }
-    $result
+  }
+  $result
 }
 
 # Returns last week's hours (the week prior to last Sunday)
 function ClockLastWeekHours
 {
-    $con = get-open-connection
-    $sunday = sunday
-    $priorSunday = $sunday.AddDays(-7)
-    $cmd = get-command $con "select sum(Hours) from Table1 where (DateTimeIn >= #$priorSunday#) and (DateTimeIn < #$sunday#)"
-    $reader = $cmd.ExecuteReader()
-    $reader.Read() > $null # has rows even when no records!
-    $readerresult = $reader[0]
-    $con.Close()
-    if ($readerresult -is [System.DBNull])
-    {
-        $result = 0
-    } else
-    {
-        $result = [double]$readerresult
-    }
-    $result
+  $con = get-open-connection
+  $sunday = sunday
+  $priorSunday = $sunday.AddDays(-7)
+  $cmd = get-command $con "select sum(Hours) from Table1 where (DateTimeIn >= $(get-unix-timestamp ($priorSunday))) and (DateTimeIn < $(get-unix-timestamp ($sunday)));"
+  $reader = $cmd.ExecuteReader()
+  $reader.Read() > $null
+  $readerresult = $reader[0]
+  close-connection $con
+  if ($readerresult -is [System.DBNull])
+  {
+    $result = 0
+  } else
+  {
+    $result = [double]$readerresult
+  }
+  $result
 }
 
 function ClockStatus
 {
-    if (uncommitted-entry $False)
-    {
-        $uncommitedDetails = get-uncommitted-details
-        $timein = $uncommitedDetails.TimeIn
-        $timeuncommitted = [DateTime]::Now - $timein
-        $hours = [Math]::Round($timeuncommitted.TotalHours, 2)
-        $timeinstr = $timein.ToShortTimeString()
-        "Task with comment [$(if ($uncommitedDetails.Comment) {$uncommitedDetails.Comment})] in progress beginning $timeinstr with hours $hours"
-    } else
-    {
-        "No tasks in progress"
-    }
+  if (uncommitted-entry $False)
+  {
+    $uncommitedDetails = get-uncommitted-details
+    $timeIn = unix-stamp-to-date-time $uncommitedDetails.TimeIn
+    $timeUncommitted = [DateTime]::UtcNow - $timeIn
+    $hours = [Math]::Round($timeuncommitted.TotalHours, 2)
+    $timeInStr = (unix-stamp-to-date-time $uncommitedDetails.TimeIn $True).ToShortTimeString()
+    "Task with comment [$(if ($uncommitedDetails.Comment) {$uncommitedDetails.Comment})] in progress beginning $timeInStr with hours $hours"
+  } else
+  {
+    "No tasks in progress"
+  }
+}
+
+# Returns details of last complete session
+function ClockLastTask
+{
+  $con = get-open-connection
+  $cmd = get-command $con "select strftime('%m-%d-%Y %H:%M', DateTimeIn, 'unixepoch', 'localtime'), strftime('%H:%M', DateTimeOut, 'unixepoch', 'localtime'), Hours, Comment from Table1 where rowid = (select max(rowid) from Table1 where DateTimeOut is not null);"
+  $reader = $cmd.ExecuteReader()
+  $reader.Read() > $null
+  if ($reader[0] -is [System.DBNull])
+  {
+    Write-Host "Last task not found."
+  } else
+  {
+    Write-Host "Last task: In[$($reader[0])] Out[$($reader[1])] Hours[$($reader[2])] Comment[$($reader[3])]"
+  }
+  close-connection $con
 }
 
 <#
-    Tests (began with empty db).  You have to copy this to a ps1 file to debug.
-    status
-    week-hours - 0
-    clock-in no comment
-    attempt clock-in again
-    status
-    clock-out no comment
-    check table
-    status
-    attempt clock-out
-    clock-in with comment
-    week-hours
-    check table for above comment
-    clock-out with comment
+.Description
+Ex: ClockAddTask '2-1-2019 10 AM' '2-1-2019 11:15 AM' 1.25 'Finished the ClockAddTask function.'
 #>
+function ClockAddTask([string] $dateTimeIn, [string] $dateTimeOut, [double] $hours, [string] $comment = '')
+{
+  $convertedTimeIn = get-unix-timestamp ([System.TimeZoneInfo]::ConvertTimeToUtc([Convert]::ToDateTime($dateTimeIn)))
+  $convertedTimeOut = get-unix-timestamp ([System.TimeZoneInfo]::ConvertTimeToUtc([Convert]::ToDateTime($dateTimeOut)))
+  $con = get-open-connection
+  $cmd = get-command $con "insert into Table1 values($convertedTimeIn, $convertedTimeOut, $hours, '$comment');"
+  # No need for try-finally here.  It fails every which way without a complaint.
+  $x = $cmd.ExecuteNonQuery() > $null
+  Write-Host $x
+  close-connection $con
+}
+
+#get-unix-timestamp ([DateTime]::Now.AddHours(-1))
+#unix-stamp-to-date-time
+#ClockOut "second revised"
+#ClockStatus
+#ClockLastWeekHours
+#ClockWeekCommented
+#$get-uncommitted-hours
+#ClockLastTask
+#ClockAddTask '1-2-2019' '1-2-2019' 2.23 "hubba hubba"
 
 Export-ModuleMember -function ClockIn
 Export-ModuleMember -function ClockOut
@@ -248,6 +318,8 @@ Export-ModuleMember -function ClockWeekHours
 Export-ModuleMember -function ClockLastWeekHours
 Export-ModuleMember -function ClockStatus
 Export-ModuleMember -Function ClockWeekCommented
+Export-ModuleMember -Function ClockLastSession
+Export-ModuleMember -Function ClockAddTask
 
 <#
 Set-Alias guh get-uncommitted-hours
