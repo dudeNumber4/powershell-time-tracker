@@ -102,6 +102,10 @@ function unix-stamp-to-date-time([System.Nullable``1[[int]]] $unixStamp = $null,
   }
 }
 
+<#
+.Description
+Note that comment may be added/modified at ClockOut.
+#>
 function ClockIn([string] $comment)
 {
   if (uncommitted-entry $False)
@@ -133,7 +137,10 @@ function get-uncommitted-hours([bool] $commented = $False)
   [Math]::Round($span.TotalHours, 2)
 }
 
-# Pre: one uncommitted entry
+<#
+.Description
+Expects one uncommitted entry.
+#>
 function ClockOut([string] $comment)
 {
   if (uncommitted-entry $True)
@@ -180,7 +187,10 @@ function sunday
   $result.Date
 }
 
-# Returns hours, comments for tasks that are commented.
+<#
+.Description
+Returns hours, comments for tasks that are commented.
+#>
 function ClockWeekCommented
 {
   $con = get-open-connection
@@ -209,7 +219,10 @@ function ClockWeekCommented
   "$hours -> $comments"
 }
 
-# Returns hours for current week.
+<#
+.Description
+Returns hours for current week.
+#>
 function ClockWeekHours
 {
   $con = get-open-connection
@@ -232,7 +245,10 @@ function ClockWeekHours
   $result
 }
 
-# Returns last week's hours (the week prior to last Sunday)
+<#
+.Description
+Returns last week's hours (the week prior to last Sunday)
+#>
 function ClockLastWeekHours
 {
   $con = get-open-connection
@@ -269,7 +285,6 @@ function ClockStatus
   }
 }
 
-# Returns details of last complete session
 function ClockLastTask
 {
   $con = get-open-connection
@@ -288,7 +303,7 @@ function ClockLastTask
 
 <#
 .Description
-Ex: ClockAddTask '2-1-2019 10 AM' '2-1-2019 11:15 AM' 1.25 'Finished the ClockAddTask function.'
+Example: ClockAddTask '2-1-2019 10 AM' '2-1-2019 11:15 AM' 1.25 'Finished the ClockAddTask function.'
 #>
 function ClockAddTask([string] $dateTimeIn, [string] $dateTimeOut, [double] $hours, [string] $comment = '')
 {
@@ -321,7 +336,7 @@ Export-ModuleMember -Function ClockWeekCommented
 Export-ModuleMember -Function ClockLastSession
 Export-ModuleMember -Function ClockAddTask
 
-<#
+<#  can't get this to work
 Set-Alias guh get-uncommitted-hours
 Export-ModuleMember -function get-uncommitted-hours -Alias guh
 #>
