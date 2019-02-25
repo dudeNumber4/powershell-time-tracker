@@ -1,10 +1,24 @@
+function load-sqllite-type
+{
+  try
+  {
+    # no way to check for existing type that I can find.  Calling this function because it never hurts; we have no long-lived connections herein.
+    # https://stackoverflow.com/questions/8511901/system-data-sqlite-close-not-releasing-database-file
+    [System.Data.SQLite.SQLiteConnection]::ClearAllPools() > $null
+  }
+  catch
+  {
+    $nugetpath = "C:\Data\BatchFiles\PSCore\system.data.sqlite.core\1.0.109.2"
+    Add-Type -Path "$nugetpath\lib\netstandard2.0\System.Data.SQLite.dll"
+  }
+}
+
 function get-open-connection
 {
   $DB_Path = 'C:\Data\TimeTracker.db'
   if (Test-Path $DB_Path)
   {
-    $nugetpath = "C:\Data\BatchFiles\PSCore\system.data.sqlite.core\1.0.109.2"
-    Add-Type -Path "$nugetpath\lib\netstandard2.0\System.Data.SQLite.dll"
+    load-sqllite-type
     # You can't load this sucker; it's not a CLR assembly.  If windows, it must live in same dir as the CLR assembly (at least for this script it does).
     #Add-Type -Path "$nugetpath\runtimes\win-x64\native\netstandard2.0\SQLite.Interop.dll"
     $result = New-Object System.Data.SQLite.SQLiteConnection -ArgumentList "Data Source=$DB_Path;Version=3;"
@@ -16,13 +30,18 @@ function get-open-connection
   }
 }
 
-function close-connection([System.Data.SQLite.SQLiteConnection] $con)
+function close-connection([System.Data.SQLite.SQLiteConnection] $con, [System.Data.SQLite.SQLiteCommand] $cmd, [System.Data.SQLite.SQLiteDataReader] $reader = $null)
 {
-  # https://stackoverflow.com/questions/8511901/system-data-sqlite-close-not-releasing-database-file
+  if ($reader)
+  {
+    $reader.Dispose() > $null
+  }
+  $reader = $null
+  $cmd.Dispose() > $null
+  $cmd = $null
   $con.Close() > $null
-  #$con.Dispose() > $null
-  [System.Data.SQLite.SQLiteConnection]::ClearAllPools() > $null
-  #[GC]::Collect()
+  $con.Dispose() > $null
+  $con = $null
 }
 
 function get-command([System.Data.SQLite.SQLiteConnection] $con, [string] $cmdText)
@@ -48,7 +67,7 @@ function uncommitted-entry([bool] $onlyone, [bool] $commented = $False)
   {
     $reader.HasRows # output
   }
-  close-connection $con
+  close-connection $con $cmd $reader
 }
 
 # Pre: uncommitted-entry returned true
@@ -62,7 +81,7 @@ function get-uncommitted-details([bool] $commented)
   $reader.Read() > $null
   # return hash table.  Array can have different types as well; would just be @($reader[0], $reader[1])
   @{TimeIn=$reader[0]; Comment=$reader[1]}
-  close-connection $con
+  close-connection $con $cmd $reader
 }
 
 # Get unix epoch start time as DateTime.
@@ -102,6 +121,11 @@ function unix-stamp-to-date-time([System.Nullable``1[[int]]] $unixStamp = $null,
   }
 }
 
+function get-last-task-filter
+{
+  "where rowid = (select max(rowid) from Table1 where DateTimeOut is not null)"
+}
+
 <#
 .Description
 Note that comment may be added/modified at ClockOut.
@@ -123,7 +147,7 @@ function ClockIn([string] $comment)
       $cmd = get-command $con "insert into Table1 (DateTimeIn) values($now);"
     }
     $cmd.ExecuteNonQuery() > $null
-    close-connection $con
+    close-connection $con $cmd
     Write-Output 'clocked in'
   }
 }
@@ -157,7 +181,7 @@ function ClockOut([string] $comment)
       $cmd = get-command $con "update Table1 set DateTimeOut = $now, Hours = $uncommitedhours where DateTimeOut is null;"
     }
     $cmd.ExecuteNonQuery() > $null
-    close-connection $con
+    close-connection $con $cmd
     Write-Host 'clocked out, yo.'
   } else
   {
@@ -211,7 +235,7 @@ function ClockWeekCommented
     # This string must be wrapped because it's actually an expression.
     $comments = "$comments $($reader[1])"
   }
-  close-connection $con
+  close-connection $con $cmd $reader
   if (uncommitted-entry $True $True) # if uncommitted comment.
   {
     $hours = $hours + (get-uncommitted-hours($True))
@@ -230,7 +254,7 @@ function ClockWeekHours
   $reader = $cmd.ExecuteReader()
   $reader.Read() > $null # has rows even when no records!
   $readerresult = $reader[0]
-  close-connection $con
+  close-connection $con $cmd $reader
   if ($readerresult -is [System.DBNull])
   {
     $result = 0
@@ -258,7 +282,7 @@ function ClockLastWeekHours
   $reader = $cmd.ExecuteReader()
   $reader.Read() > $null
   $readerresult = $reader[0]
-  close-connection $con
+  close-connection $con $cmd $reader
   if ($readerresult -is [System.DBNull])
   {
     $result = 0
@@ -285,10 +309,14 @@ function ClockStatus
   }
 }
 
+<#
+.Description
+Get the details of the last complete task.
+#>
 function ClockLastTask
 {
   $con = get-open-connection
-  $cmd = get-command $con "select strftime('%m-%d-%Y %H:%M', DateTimeIn, 'unixepoch', 'localtime'), strftime('%H:%M', DateTimeOut, 'unixepoch', 'localtime'), Hours, Comment from Table1 where rowid = (select max(rowid) from Table1 where DateTimeOut is not null);"
+  $cmd = get-command $con "select strftime('%m-%d-%Y %H:%M', DateTimeIn, 'unixepoch', 'localtime'), strftime('%H:%M', DateTimeOut, 'unixepoch', 'localtime'), Hours, Comment from Table1 $(get-last-task-filter);"
   $reader = $cmd.ExecuteReader()
   $reader.Read() > $null
   if ($reader[0] -is [System.DBNull])
@@ -298,7 +326,20 @@ function ClockLastTask
   {
     Write-Host "Last task: In[$($reader[0])] Out[$($reader[1])] Hours[$($reader[2])] Comment[$($reader[3])]"
   }
-  close-connection $con
+  close-connection $con $cmd $reader
+}
+
+<#
+.Description
+Delete the last complete task.  If you have an uncompleted task you wish to delete, simply call ClockOut followed by this function.
+#>
+function ClockDeleteLastTask
+{
+  $con = get-open-connection
+  $cmd = get-command $con "delete from Table1 $(get-last-task-filter);"
+  $cmd.ExecuteNonQuery() > $null
+  Write-Host "Last complete task deleted."
+  close-connection $con $cmd
 }
 
 <#
@@ -314,18 +355,19 @@ function ClockAddTask([string] $dateTimeIn, [string] $dateTimeOut, [double] $hou
   # No need for try-finally here.  It fails every which way without a complaint.
   $x = $cmd.ExecuteNonQuery() > $null
   Write-Host $x
-  close-connection $con
+  close-connection $con $cmd
 }
 
 #get-unix-timestamp ([DateTime]::Now.AddHours(-1))
 #unix-stamp-to-date-time
-#ClockOut "second revised"
+#ClockOut "delete me"
 #ClockStatus
 #ClockLastWeekHours
 #ClockWeekCommented
 #$get-uncommitted-hours
 #ClockLastTask
 #ClockAddTask '1-2-2019' '1-2-2019' 2.23 "hubba hubba"
+#ClockIn
 
 Export-ModuleMember -function ClockIn
 Export-ModuleMember -function ClockOut

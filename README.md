@@ -20,11 +20,12 @@ Simple time tracking system (tracks hours).  Currently reports time by week.  Co
 * ClockWeekCommented.  Report hours and comments for tasks this week that include comments.  I use this (I add comments) for tasks that I consider a separate "category."
 * ClockStatus.  Report current task and hours taken so far.
 * ClockLastTask.  Details of the last complete task.
+* ClockDeleteLastTask.  Delete the last complete task.
 * ClockAddTask.  Manually add a task.
 
 ### Configure
 * Grab the nuget package mentioned in dependencies.
-* Set the path to that nuget package in function get-open-connection.
+* Set the path to that nuget package in function load-sqllite-type.
 * Set the path to TimeTracker.db (starter database included in this repo) in function get-open-connection.  If you ever need to recreate that database, it just has one table:
   * `create table Table1(DateTimeIn int, DateTimeOut int, Hours real, Comment varchar(512));`
 * Add TimeTracker.psm1 to PowerShell profile.  To configure a profile and reference a separate psm1 file, see this old post (which is still relevant for PowerShell 6) https://codejournal.blogspot.com/2018/08/using-powershell-as-command-alias-runner.html.  For redirecting to a file in a location of your choice, see https://stackoverflow.com/questions/5095509/is-it-possible-to-change-the-default-value-of-profile-to-a-new-value (see Root Loop's answer).
