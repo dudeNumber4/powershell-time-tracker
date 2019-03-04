@@ -344,7 +344,7 @@ function ClockDeleteLastTask
 
 <#
 .Description
-Example: ClockAddTask '2-1-2019 10 AM' '2-1-2019 11:15 AM' 1.25 'Finished the ClockAddTask function.'
+Example: ClockAddTask '2-1-2019 10 AM' '2-1-2019 11:15 AM' 1.25 'Optional Comment.'
 #>
 function ClockAddTask([string] $dateTimeIn, [string] $dateTimeOut, [double] $hours, [string] $comment = '')
 {
@@ -377,6 +377,8 @@ Export-ModuleMember -function ClockStatus
 Export-ModuleMember -Function ClockWeekCommented
 Export-ModuleMember -Function ClockLastSession
 Export-ModuleMember -Function ClockAddTask
+Export-ModuleMember -Function ClockLastTask
+Export-ModuleMember -Function ClockDeleteLastTask
 
 <#  can't get this to work
 Set-Alias guh get-uncommitted-hours
