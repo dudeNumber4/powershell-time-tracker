@@ -90,35 +90,27 @@ function unix-epoch-starting-date-time()
   New-Object DateTime -ArgumentList 1970, 1, 1
 }
 
-# Get the unix time stamp for the time passed (or UTCNow if none)
+# Get the unix time stamp for the time passed (or Now if none)
 function get-unix-timestamp([System.Nullable``1[[System.DateTime]]] $dt = $null)
 {
   if ($dt -eq $null)
   {
-    $dt = [System.DateTime]::UTCNow
+    $dt = [System.DateTime]::Now
   }
   $unixStart = unix-epoch-starting-date-time
   # demonic!  C# would require calling the Value property on the nullable type, but if we do that here, it bombs.
   [int]($dt.Subtract($unixStart)).TotalSeconds;
 }
 
-# Given a unix numeric time stamp, convert to (optionally, localized) DateTime.
-function unix-stamp-to-date-time([System.Nullable``1[[int]]] $unixStamp = $null, [Boolean] $localize = $False)
+# Given a unix numeric time stamp, convert to DateTime.
+function unix-stamp-to-date-time([System.Nullable``1[[int]]] $unixStamp = $null)
 {
   if ($unixStamp -eq $null)
   {
     $unixStamp = get-unix-timestamp
   }
   $unixStartDate = unix-epoch-starting-date-time
-  $result = $unixStartDate.AddSeconds($unixStamp);
-  if ($localize)
-  {
-    [System.TimeZoneInfo]::ConvertTimeFromUtc($result, [System.TimeZoneInfo]::Local);
-  }
-  else 
-  {
-    $result
-  }
+  $unixStartDate.AddSeconds($unixStamp);
 }
 
 function get-last-task-filter
@@ -192,9 +184,9 @@ function ClockOut([string] $comment)
 # Returns past Sunday at midnight as DateTime
 function sunday
 {
-  $start = [int][DateTime]::UTCNow.DayOfWeek
+  $start = [int][DateTime]::Now.DayOfWeek
   $target = 7
-  $result = [DateTime]::UTCNow
+  $result = [DateTime]::Now
   if ($start -gt $target)
   {
     $result = $result.AddDays($target - $start)
@@ -208,6 +200,7 @@ function sunday
       $result = $result.AddDays(-7)
     }
   }
+  
   $result.Date
 }
 
@@ -255,12 +248,10 @@ function ClockWeekHours
   $reader.Read() > $null # has rows even when no records!
   $readerresult = $reader[0]
   close-connection $con $cmd $reader
-  if ($readerresult -is [System.DBNull])
+  $result = get-uncommitted-hours
+  if ($readerresult -isnot [System.DBNull])
   {
-    $result = 0
-  } else
-  {
-    $result = [double]$readerresult
+    $result = $result + [double]$readerresult
     if (uncommitted-entry $False)
     {
       $result = [Math]::Round($result + (get-uncommitted-hours), 2)
@@ -299,7 +290,7 @@ function ClockStatus
   {
     $uncommitedDetails = get-uncommitted-details
     $timeIn = unix-stamp-to-date-time $uncommitedDetails.TimeIn
-    $timeUncommitted = [DateTime]::UtcNow - $timeIn
+    $timeUncommitted = [DateTime]::Now - $timeIn
     $hours = [Math]::Round($timeuncommitted.TotalHours, 2)
     $timeInStr = (unix-stamp-to-date-time $uncommitedDetails.TimeIn $True).ToShortTimeString()
     "Task with comment [$(if ($uncommitedDetails.Comment) {$uncommitedDetails.Comment})] in progress beginning $timeInStr with hours $hours"
@@ -344,12 +335,12 @@ function ClockDeleteLastTask
 
 <#
 .Description
-Example: ClockAddTask '2-1-2019 10 AM' '2-1-2019 11:15 AM' 1.25 'Optional Comment.'
+Example: ClockAddTask '2-1-2019 10 AM' '2-1-2019 11:15 AM' 1.25 'Finished the ClockAddTask function.'
 #>
 function ClockAddTask([string] $dateTimeIn, [string] $dateTimeOut, [double] $hours, [string] $comment = '')
 {
-  $convertedTimeIn = get-unix-timestamp ([System.TimeZoneInfo]::ConvertTimeToUtc([Convert]::ToDateTime($dateTimeIn)))
-  $convertedTimeOut = get-unix-timestamp ([System.TimeZoneInfo]::ConvertTimeToUtc([Convert]::ToDateTime($dateTimeOut)))
+  $convertedTimeIn = get-unix-timestamp ($dateTimeIn)
+  $convertedTimeOut = get-unix-timestamp ($dateTimeOut)
   $con = get-open-connection
   $cmd = get-command $con "insert into Table1 values($convertedTimeIn, $convertedTimeOut, $hours, '$comment');"
   # No need for try-finally here.  It fails every which way without a complaint.
@@ -360,14 +351,18 @@ function ClockAddTask([string] $dateTimeIn, [string] $dateTimeOut, [double] $hou
 
 #get-unix-timestamp ([DateTime]::Now.AddHours(-1))
 #unix-stamp-to-date-time
+#ClockIn "frist"
 #ClockOut "delete me"
 #ClockStatus
 #ClockLastWeekHours
 #ClockWeekCommented
+ClockWeekHours
 #$get-uncommitted-hours
 #ClockLastTask
 #ClockAddTask '1-2-2019' '1-2-2019' 2.23 "hubba hubba"
-#ClockIn
+#sunday
+#unix-stamp-to-date-time 1552158835
+#get-unix-timestamp (sunday)
 
 Export-ModuleMember -function ClockIn
 Export-ModuleMember -function ClockOut
