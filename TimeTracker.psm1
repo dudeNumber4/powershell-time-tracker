@@ -75,12 +75,13 @@ function uncommitted-entry([bool] $onlyone, [bool] $commented = $False)
 function get-uncommitted-details([bool] $commented)
 {
   $con = get-open-connection
-  $cmd = get-command $con "select DateTimeIn, Comment FROM Table1 where DateTimeOut is null$(if ($commented){' and Comment is not null'});"
+  $commentedAddOn = " and Comment is not null and Comment != `'`'"
+  $cmd = get-command $con "select DateTimeIn, Comment FROM Table1 where DateTimeOut is null$(if ($commented){$commentedAddOn});"
   $reader = $cmd.ExecuteReader() #execute scalar doesn't seem to return anything.  It's not null, blank string, and debugger just shows nothing.
   # In PowerShell, the results of each statement are returned as output, even without a statement that contains the Return keyword
   $reader.Read() > $null
   # return hash table.  Array can have different types as well; would just be @($reader[0], $reader[1])
-  @{TimeIn=$reader[0]; Comment=$reader[1]}
+  @{TimeIn=$reader[0]; Comment=$reader[1]} # might both be null
   close-connection $con $cmd $reader
 }
 
@@ -91,9 +92,9 @@ function unix-epoch-starting-date-time()
 }
 
 # Get the unix time stamp for the time passed (or Now if none)
-function get-unix-timestamp([System.Nullable``1[[System.DateTime]]] $dt = $null)
+function get-unix-timestamp([AllowNull()] [System.Nullable``1[[System.DateTime]]] $dt = $null)
 {
-  if ($dt -eq $null)
+  if ($null -eq $dt) # you're supposed to compare to null this way: https://www.spcaf.com/blog/powershell-null-comparison/
   {
     $dt = [System.DateTime]::Now
   }
@@ -103,9 +104,9 @@ function get-unix-timestamp([System.Nullable``1[[System.DateTime]]] $dt = $null)
 }
 
 # Given a unix numeric time stamp, convert to DateTime.
-function unix-stamp-to-date-time([System.Nullable``1[[int]]] $unixStamp = $null)
+function unix-stamp-to-date-time([AllowNull()] [System.Nullable``1[[int]]] $unixStamp = $null)
 {
-  if ($unixStamp -eq $null)
+  if ($null -eq $unixStamp)
   {
     $unixStamp = get-unix-timestamp
   }
@@ -118,66 +119,36 @@ function get-last-task-filter
   "where rowid = (select max(rowid) from Table1 where DateTimeOut is not null)"
 }
 
-<#
-.Description
-Note that comment may be added/modified at ClockOut.
-#>
-function ClockIn([string] $comment)
-{
-  if (uncommitted-entry $False)
-  {
-    throw [System.Exception] "Uncommitted entry(ies).  Fix it."
-  } else
-  {
-    $con = get-open-connection
-    $now = get-unix-timestamp
-    if ($comment)
-    {
-      $cmd = get-command $con "insert into Table1 (DateTimeIn, Comment) values($now, '$comment');"
-    } else
-    {
-      $cmd = get-command $con "insert into Table1 (DateTimeIn) values($now);"
-    }
-    $cmd.ExecuteNonQuery() > $null
-    close-connection $con $cmd
-    Write-Output 'clocked in'
-  }
-}
-
 # Pre: uncommitted-entry returned true
 function get-uncommitted-hours([bool] $commented = $False)
 {
-  $timeInUnix = (get-uncommitted-details($commented)).TimeIn
-  $now = get-unix-timestamp
-  $span = [System.TimeSpan]::FromSeconds($now - $timeInUnix)
-  [Math]::Round($span.TotalHours, 2)
+  $uncommitedDetails = get-uncommitted-details $commented
+  if ($uncommitedDetails.TimeIn -eq $null)
+  {
+    0
+  } else 
+  {
+    $timeInUnix = $uncommitedDetails.TimeIn
+    $now = get-unix-timestamp
+    $span = [System.TimeSpan]::FromSeconds($now - $timeInUnix)
+    $result = [Math]::Round($span.TotalHours, 2)
+    if ($result -lt 0) 
+    {
+      throw [System.Exception] "Calculated less than 0 in get-uncommitted-hours"
+    }
+    $result
+    }
 }
 
-<#
-.Description
-Expects one uncommitted entry.
+<# 
+Comment all over is non-typed because powershell is a frickin mess with default null params WRT strings:
+https://stackoverflow.com/questions/22906520/powershell-string-default-parameter-value-does-not-work-as-expected
 #>
-function ClockOut([string] $comment)
+function ensure-non-empty-comment($comment) 
 {
-  if (uncommitted-entry $True)
+  if ($comment -eq '') 
   {
-    $now = get-unix-timestamp
-    $uncommitedhours = get-uncommitted-hours
-    $con = get-open-connection
-
-    if ($comment)
-    {
-      $cmd = get-command $con "update Table1 set DateTimeOut = $now, Hours = $uncommitedhours, Comment = '$comment' where DateTimeOut is null;"
-    } else
-    {
-      $cmd = get-command $con "update Table1 set DateTimeOut = $now, Hours = $uncommitedhours where DateTimeOut is null;"
-    }
-    $cmd.ExecuteNonQuery() > $null
-    close-connection $con $cmd
-    Write-Host 'clocked out, yo.'
-  } else
-  {
-    throw [System.Exception] "TimeOut: expected one uncommitted entry.  Go fix."
+    throw [System.Exception] "Empty comment not allowed; expected null or non-empty string"
   }
 }
 
@@ -206,6 +177,62 @@ function sunday
 
 <#
 .Description
+Note that comment may be added/modified at ClockOut.
+#>
+function ClockIn($comment)
+{
+  ensure-non-empty-comment $comment
+  if (uncommitted-entry $False)
+  {
+    throw [System.Exception] "Uncommitted entry(ies).  Fix it."
+  } else
+  {
+    $con = get-open-connection
+    $now = get-unix-timestamp
+    if ($comment)
+    {
+      $cmd = get-command $con "insert into Table1 (DateTimeIn, Comment) values($now, '$comment');"
+    } else
+    {
+      $cmd = get-command $con "insert into Table1 (DateTimeIn) values($now);"
+    }
+    $cmd.ExecuteNonQuery() > $null
+    close-connection $con $cmd
+    Write-Output 'clocked in'
+  }
+}
+
+<#
+.Description
+Expects one uncommitted entry.
+#>
+function ClockOut($comment)
+{
+  ensure-non-empty-comment $comment
+  if (uncommitted-entry $True)
+  {
+    $now = get-unix-timestamp
+    $uncommitedhours = get-uncommitted-hours
+    $con = get-open-connection
+
+    if ($comment)
+    {
+      $cmd = get-command $con "update Table1 set DateTimeOut = $now, Hours = $uncommitedhours, Comment = '$comment' where DateTimeOut is null;"
+    } else
+    {
+      $cmd = get-command $con "update Table1 set DateTimeOut = $now, Hours = $uncommitedhours where DateTimeOut is null;"
+    }
+    $cmd.ExecuteNonQuery() > $null
+    close-connection $con $cmd
+    Write-Host 'clocked out, yo.'
+  } else
+  {
+    throw [System.Exception] "TimeOut: expected one uncommitted entry.  Go fix."
+  }
+}
+
+<#
+.Description
 Returns hours, comments for tasks that are commented.
 #>
 function ClockWeekCommented
@@ -213,7 +240,8 @@ function ClockWeekCommented
   $con = get-open-connection
   $hours = 0
   $comments = ''
-  $cmd = get-command $con "select Hours, Comment from Table1 where DateTimeIn >= $(get-unix-timestamp (sunday)) and Comment is not null;"
+  # in case blank comments getting in.
+  $cmd = get-command $con "select Hours, Comment from Table1 where DateTimeIn >= $(get-unix-timestamp (sunday)) and Comment is not null and Comment != '';"
   $reader = $cmd.ExecuteReader()
   while ($reader.Read())
   {
@@ -307,7 +335,7 @@ Get the details of the last complete task.
 function ClockLastTask
 {
   $con = get-open-connection
-  $cmd = get-command $con "select strftime('%m-%d-%Y %H:%M', DateTimeIn, 'unixepoch', 'localtime'), strftime('%H:%M', DateTimeOut, 'unixepoch', 'localtime'), Hours, Comment from Table1 $(get-last-task-filter);"
+  $cmd = get-command $con "select strftime('%m-%d-%Y %H:%M', DateTimeIn, 'unixepoch'), strftime('%H:%M', DateTimeOut, 'unixepoch'), Hours, Comment from Table1 $(get-last-task-filter);"
   $reader = $cmd.ExecuteReader()
   $reader.Read() > $null
   if ($reader[0] -is [System.DBNull])
@@ -337,32 +365,39 @@ function ClockDeleteLastTask
 .Description
 Example: ClockAddTask '2-1-2019 10 AM' '2-1-2019 11:15 AM' 1.25 'Finished the ClockAddTask function.'
 #>
-function ClockAddTask([string] $dateTimeIn, [string] $dateTimeOut, [double] $hours, [string] $comment = '')
+function ClockAddTask([string] $dateTimeIn, [string] $dateTimeOut, [double] $hours, $comment)
 {
+  ensure-non-empty-comment $comment
   $convertedTimeIn = get-unix-timestamp ($dateTimeIn)
   $convertedTimeOut = get-unix-timestamp ($dateTimeOut)
   $con = get-open-connection
-  $cmd = get-command $con "insert into Table1 values($convertedTimeIn, $convertedTimeOut, $hours, '$comment');"
+  if ($comment)
+  {
+    $cmd = get-command $con "insert into Table1 values($convertedTimeIn, $convertedTimeOut, $hours, '$comment');"
+  } else 
+  {
+    $cmd = get-command $con "insert into Table1 values($convertedTimeIn, $convertedTimeOut, $hours, null);"
+  }
   # No need for try-finally here.  It fails every which way without a complaint.
-  $x = $cmd.ExecuteNonQuery() > $null
-  Write-Host $x
+  $cmd.ExecuteNonQuery() > $null
   close-connection $con $cmd
 }
 
-#get-unix-timestamp ([DateTime]::Now.AddHours(-1))
+#get-unix-timestamp ([DateTime]::Now.AddDays(-4))
 #unix-stamp-to-date-time
-#ClockIn "frist"
+#ClockIn
 #ClockOut "delete me"
 #ClockStatus
 #ClockLastWeekHours
 #ClockWeekCommented
-ClockWeekHours
-#$get-uncommitted-hours
+#ClockWeekHours
+#get-uncommitted-hours
 #ClockLastTask
-#ClockAddTask '1-2-2019' '1-2-2019' 2.23 "hubba hubba"
+#ClockAddTask '3-21-2019' '3-21-2019' 0.58
 #sunday
 #unix-stamp-to-date-time 1552158835
 #get-unix-timestamp (sunday)
+#get-uncommitted-details
 
 Export-ModuleMember -function ClockIn
 Export-ModuleMember -function ClockOut

@@ -30,3 +30,8 @@ Simple time tracking system (tracks hours).  Currently reports time by week.  Co
   * `create table Table1(DateTimeIn int, DateTimeOut int, Hours real, Comment varchar(512));`
 * Add TimeTracker.psm1 to PowerShell profile.  To configure a profile and reference a separate psm1 file, see this old post (which is still relevant for PowerShell 6) https://codejournal.blogspot.com/2018/08/using-powershell-as-command-alias-runner.html.  For redirecting to a file in a location of your choice, see https://stackoverflow.com/questions/5095509/is-it-possible-to-change-the-default-value-of-profile-to-a-new-value (see Root Loop's answer).
 * Test configuration by opening powershell and calling the ClockStatus function.
+
+### A Few SQLite Commands
+* sqlite3 "YourPathTo\TimeTracker.db" -- start the engine
+* select max(DateTimeIn) from Table1; -- get ball-park date value
+* select rowid, strftime('%m-%d-%Y %H:%M', DateTimeIn, 'unixepoch'), strftime('%m-%d-%Y %H:%M', DateTimeOut, 'unixepoch'), Hours from Table1 where DateTimeIn > 1552780800; -- time value from above
