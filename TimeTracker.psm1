@@ -70,21 +70,6 @@ function uncommitted-entry([bool] $onlyone, [bool] $commented = $False)
   close-connection $con $cmd $reader
 }
 
-# Pre: uncommitted-entry returned true
-# Returns time in, comment (if pass commented)
-function get-uncommitted-details([bool] $commented)
-{
-  $con = get-open-connection
-  $commentedAddOn = " and Comment is not null and Comment != `'`'"
-  $cmd = get-command $con "select DateTimeIn, Comment FROM Table1 where DateTimeOut is null$(if ($commented){$commentedAddOn});"
-  $reader = $cmd.ExecuteReader() #execute scalar doesn't seem to return anything.  It's not null, blank string, and debugger just shows nothing.
-  # In PowerShell, the results of each statement are returned as output, even without a statement that contains the Return keyword
-  $reader.Read() > $null
-  # return hash table.  Array can have different types as well; would just be @($reader[0], $reader[1])
-  @{TimeIn=$reader[0]; Comment=$reader[1]} # might both be null
-  close-connection $con $cmd $reader
-}
-
 # Get unix epoch start time as DateTime.
 function unix-epoch-starting-date-time()
 {
@@ -120,10 +105,25 @@ function get-last-task-filter
 }
 
 # Pre: uncommitted-entry returned true
+# Returns time in, comment (if pass commented)
+function get-uncommitted-details([bool] $commented)
+{
+  $con = get-open-connection
+  $commentedAddOn = " and Comment is not null and Comment != `'`'"
+  $cmd = get-command $con "select DateTimeIn, Comment FROM Table1 where DateTimeOut is null$(if ($commented){$commentedAddOn});"
+  $reader = $cmd.ExecuteReader() #execute scalar doesn't seem to return anything.  It's not null, blank string, and debugger just shows nothing.
+  # In PowerShell, the results of each statement are returned as output, even without a statement that contains the Return keyword
+  $reader.Read() > $null
+  # return hash table.  Array can have different types as well; would just be @($reader[0], $reader[1])
+  @{TimeIn=$reader[0]; Comment=$reader[1]} # might both be null
+  close-connection $con $cmd $reader
+}
+
+# Pre: uncommitted-entry returned true
 function get-uncommitted-hours([bool] $commented = $False)
 {
   $uncommitedDetails = get-uncommitted-details $commented
-  if ($uncommitedDetails.TimeIn -eq $null)
+  if ($null -eq $uncommitedDetails.TimeIn)
   {
     0
   } else 
@@ -137,7 +137,7 @@ function get-uncommitted-hours([bool] $commented = $False)
       throw [System.Exception] "Calculated less than 0 in get-uncommitted-hours"
     }
     $result
-    }
+  }
 }
 
 <# 
@@ -280,10 +280,6 @@ function ClockWeekHours
   if ($readerresult -isnot [System.DBNull])
   {
     $result = $result + [double]$readerresult
-    if (uncommitted-entry $False)
-    {
-      $result = [Math]::Round($result + (get-uncommitted-hours), 2)
-    }
   }
   $result
 }
@@ -383,6 +379,16 @@ function ClockAddTask([string] $dateTimeIn, [string] $dateTimeOut, [double] $hou
   close-connection $con $cmd
 }
 
+<#
+.Description
+Useful for getting a timestamp to pass directly to SqLite when querying the DB directly.  $days is days to add to [now] and will usually be negative.
+#>
+function ClockGetTimeStamp([int] $days)
+{
+  $dt = [System.DateTime]::Now.AddDays($days)
+  get-unix-timestamp ($dt)
+}
+
 #get-unix-timestamp ([DateTime]::Now.AddDays(-4))
 #unix-stamp-to-date-time
 #ClockIn
@@ -409,6 +415,7 @@ Export-ModuleMember -Function ClockLastSession
 Export-ModuleMember -Function ClockAddTask
 Export-ModuleMember -Function ClockLastTask
 Export-ModuleMember -Function ClockDeleteLastTask
+Export-ModuleMember -Function ClockGetTimeStamp
 
 <#  can't get this to work
 Set-Alias guh get-uncommitted-hours
