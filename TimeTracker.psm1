@@ -8,14 +8,14 @@ function load-sqllite-type
   }
   catch
   {
-    $nugetpath = "C:\Data\BatchFiles\PSCore\system.data.sqlite.core\1.0.109.2"
+    $nugetpath = 'C:\..\system.data.sqlite.core\1.0.109.2'
     Add-Type -Path "$nugetpath\lib\netstandard2.0\System.Data.SQLite.dll"
   }
 }
 
 function get-open-connection
 {
-  $DB_Path = 'C:\Data\TimeTracker.db'
+  $DB_Path = 'C:\..\TimeTracker.db'
   if (Test-Path $DB_Path)
   {
     load-sqllite-type

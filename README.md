@@ -17,11 +17,12 @@ Simple time tracking system (tracks hours).  Currently reports time by week.  Co
 * ClockOut.  Stop a task in progress.  Comment optional.  Comment at ClockOut will overwrite ClockIn comment.
 * ClockWeekHours.  Report hours for current week (Sunday - Saturday)
 * ClockLastWeekHours.  Report hours for last week (Sunday - Saturday starting at the Sunday prior to last).  I found myself needing this when working on the weekend.
-* ClockWeekCommented.  Report hours and comments for tasks this week that include comments.  I use this (I add comments) for tasks that I consider a separate "category."
 * ClockStatus.  Report current task and hours taken so far.
+* ClockWeekCommented.  Report hours and comments for tasks this week that include comments.  I use this (I add comments) for tasks that I consider a separate "category."
+* ClockAddTask.  Manually add a task.
 * ClockLastTask.  Details of the last complete task.
 * ClockDeleteLastTask.  Delete the last complete task.
-* ClockAddTask.  Manually add a task.
+* ClockGetTimeStamp.  Useful for getting a timestamp to pass directly to SqLite when querying the DB directly.  $days param is days to add to [now] and will usually be negative.
 
 ### Configure
 * Grab the nuget package mentioned in dependencies.
