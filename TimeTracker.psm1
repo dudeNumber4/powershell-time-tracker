@@ -1,5 +1,6 @@
 function load-sqllite-type
 {
+  # ToDo: see README
   try
   {
     # no way to check for existing type that I can find.  Calling this function because it never hurts; we have no long-lived connections herein.
@@ -8,14 +9,13 @@ function load-sqllite-type
   }
   catch
   {
-    $nugetpath = 'C:\..\system.data.sqlite.core\1.0.109.2'
-    Add-Type -Path "$nugetpath\lib\netstandard2.0\System.Data.SQLite.dll"
+    Add-Type -Path 'C:\source\powershell-time-tracker\System.Data.SQLite.dll'
   }
 }
 
 function get-open-connection
 {
-  $DB_Path = 'C:\..\TimeTracker.db'
+  $DB_Path = 'C:\Data\TimeTracker.db'
   if (Test-Path $DB_Path)
   {
     load-sqllite-type
@@ -233,15 +233,23 @@ function ClockOut($comment)
 
 <#
 .Description
-Returns hours, comments for tasks that are commented.
+If $thisWeek is true, just this week; else last week.
 #>
-function ClockWeekCommented
+function clock-week-commented($thisWeek)
 {
   $con = get-open-connection
   $hours = 0
   $comments = ''
-  # in case blank comments getting in.
-  $cmd = get-command $con "select Hours, Comment from Table1 where DateTimeIn >= $(get-unix-timestamp (sunday)) and Comment is not null and Comment != '';"
+  $sunday = sunday
+  $priorSunday = $sunday.AddDays(-7)
+  if ($thisWeek) {
+    # in case blank comments getting in.
+    $cmd = get-command $con "select Hours, Comment from Table1 where DateTimeIn >= $(get-unix-timestamp (sunday)) and Comment is not null and Comment != '';"
+  } else {
+    $timeStampPriorSunday = get-unix-timestamp ($priorSunday)
+    $timeStampThisSunday = get-unix-timestamp ($sunday)
+    $cmd = get-command $con "select Hours, Comment from Table1 where (DateTimeIn >= $timeStampPriorSunday) and (DateTimeIn <= $timeStampThisSunday) and Comment is not null and Comment != '';"
+  }
   $reader = $cmd.ExecuteReader()
   while ($reader.Read())
   {
@@ -389,13 +397,30 @@ function ClockGetTimeStamp([int] $days)
   get-unix-timestamp ($dt)
 }
 
+<#
+.Description
+Returns hours, comments for tasks that are commented from the current week.
+#>
+function ClockWeekCommented {
+  clock-week-commented $true
+}
+
+<#
+.Description
+Returns hours, comments for tasks that are commented from the prior week.
+#>
+function ClockLastWeekCommented {
+  clock-week-commented $false
+}
+
 #get-unix-timestamp ([DateTime]::Now.AddDays(-4))
 #unix-stamp-to-date-time
 #ClockIn
 #ClockOut "delete me"
 #ClockStatus
 #ClockLastWeekHours
-#ClockWeekCommented
+#ClockWeekCommented $true
+#ClockWeekCommented $false
 #ClockWeekHours
 #get-uncommitted-hours
 #ClockLastTask
@@ -411,7 +436,7 @@ Export-ModuleMember -function ClockWeekHours
 Export-ModuleMember -function ClockLastWeekHours
 Export-ModuleMember -function ClockStatus
 Export-ModuleMember -Function ClockWeekCommented
-Export-ModuleMember -Function ClockLastSession
+Export-ModuleMember -Function ClockLastWeekCommented
 Export-ModuleMember -Function ClockAddTask
 Export-ModuleMember -Function ClockLastTask
 Export-ModuleMember -Function ClockDeleteLastTask
@@ -422,3 +447,4 @@ Set-Alias guh get-uncommitted-hours
 Export-ModuleMember -function get-uncommitted-hours -Alias guh
 #>
 
+load-sqllite-type
