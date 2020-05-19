@@ -184,7 +184,7 @@ function ClockIn($comment)
   ensure-non-empty-comment $comment
   if (uncommitted-entry $False)
   {
-    throw [System.Exception] "Uncommitted entry(ies).  Fix it."
+    throw [System.Exception] "ClockIn: Uncommitted entry(ies).  Fix it."
   } else
   {
     $con = get-open-connection
@@ -227,7 +227,7 @@ function ClockOut($comment)
     Write-Host 'clocked out, yo.'
   } else
   {
-    throw [System.Exception] "TimeOut: expected one uncommitted entry.  Go fix."
+    throw [System.Exception] "ClockOut: expected one uncommitted entry.  Go fix."
   }
 }
 
