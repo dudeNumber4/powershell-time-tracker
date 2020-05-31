@@ -1,3 +1,5 @@
+#All time herein is accounted as localtime, not UTC.
+
 function load-sqllite-type
 {
   # ToDo: see README
@@ -152,7 +154,7 @@ function ensure-non-empty-comment($comment)
   }
 }
 
-# Returns past Sunday at midnight as DateTime
+# Returns past Sunday at midnight as DateTime local
 function sunday
 {
   $start = [int][DateTime]::Now.DayOfWeek
@@ -441,6 +443,7 @@ Export-ModuleMember -Function ClockAddTask
 Export-ModuleMember -Function ClockLastTask
 Export-ModuleMember -Function ClockDeleteLastTask
 Export-ModuleMember -Function ClockGetTimeStamp
+Export-ModuleMember -Function Hank
 
 <#  can't get this to work
 Set-Alias guh get-uncommitted-hours
