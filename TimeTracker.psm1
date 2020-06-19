@@ -240,7 +240,7 @@ If $thisWeek is true, just this week; else last week.
 function clock-week-commented($thisWeek)
 {
   $con = get-open-connection
-  $hours = 0
+  $totalHours = 0
   $comments = ''
   $sunday = sunday
   $priorSunday = $sunday.AddDays(-7)
@@ -255,23 +255,25 @@ function clock-week-commented($thisWeek)
   $reader = $cmd.ExecuteReader()
   while ($reader.Read())
   {
-    if ($reader[0] -isnot [System.DBNull]) # If current is null, that uncommitted will be added below.
+    if ($reader[0] -is [System.DBNull])
     {
-      $hours = [Math]::Round($hours + $reader[0], 2)
+      # if (uncommitted-entry $True $True)
+      # If current hours is null, there should be uncommitted totalHours.
+      $currentHours = get-uncommitted-hours $True
+    } else {
+      $currentHours = [Math]::Round([double]$reader[0], 2)
     }
+    $totalHours = [Math]::Round($totalHours + $currentHours, 2)
+
     if ($comments -ne '')
     {
       $comments = "$comments | "
     }
-    # This string must be wrapped because it's actually an expression.
-    $comments = "$comments $($reader[1])"
+    # $comments = "$comments $($reader[1]$($currentHours))"
+    $comments = $comments + ' ' + $reader[1] + '(' + $currentHours + ')'
   }
   close-connection $con $cmd $reader
-  if (uncommitted-entry $True $True) # if uncommitted comment.
-  {
-    $hours = $hours + (get-uncommitted-hours($True))
-  }
-  "$hours -> $comments"
+  "$totalHours -> $comments"
 }
 
 <#
