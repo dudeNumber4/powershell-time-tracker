@@ -3,7 +3,9 @@ Simple time tracking system (tracks hours).  Currently reports time by week.  Co
 
 # Dependencies
 * PowerShell Core.  Cross platform.
-* SQLite nuget package for .Net core.  https://www.nuget.org/packages/System.Data.SQLite/
+* ~~SQLite nuget package for .Net core.  https://www.nuget.org/packages/System.Data.SQLite/~~
+* SQLite nuget package for .Net Framework (legacy.  Why?  No !@#$ing idea): https://www.nuget.org/packages/Stub.System.Data.SQLite.Core.NetFramework/
+  * (Why "stub"?  No @#$%ing idea)
 * While there are no other dependencies, having the SQLite tools would be handy.  For instance, currently, if you call ClockIn and there is already an uncommitted task, the error will tell you that some task hasn't been finished, "Fix it."  Without SQLite, you wouldn't be able to manually go into the table and remove the uncommitted task if it's something you wanted to just delete.  You would probably have to issue 'ClockOut "disregard this task"'.  Here are the functions that would be handy for non-SQLite users (if anyone ever requests them, I will add, but I just do these manually in those rare circumstances):
   * ClockDeleteCurrentTask
   * ClockDeleteTasks Date
@@ -26,14 +28,16 @@ Simple time tracking system (tracks hours).  Currently reports time by week.  Co
 * **ClockGetTimeStamp** Useful for getting a timestamp to pass directly to SqLite when querying the DB directly.  $days param is days to add to [now] and will usually be negative.
 
 ### Configure
-* SqlLite package
-	* TO DO:
-	* Remove the existing dll (or move it)
-	* Install-Package System.Data.SQLite.Core
-	* Change the script to add type from nuget source... somehow
-* Grab the nuget package mentioned in dependencies.
-* Set the path to that nuget package in function load-sqllite-type.
-* Set the path to TimeTracker.db (starter database included in this repo) in function get-open-connection.  If you ever need to recreate that database, it just has one table:
+* SqlLite package (mentioned in dependencies).
+  * There is no doubt a proper way to load this dependency dynamically from wherever it's "installed" by nuget, but it's manual now.
+  * Install the nuget package mentioned in dependencies:
+    * In powershell: `Install-Package Stub.System.Data.SQLite.Core.NetFramework`
+      * If this fails, you probably need to set nuget as a package source:
+      * `Find-PackageProvider -Name NuGet | Install-PackageProvider -Force`
+      * `Register-PackageSource -Name nuget.org -Location https://www.nuget.org/api/v2 -ProviderName NuGet`
+    * Find the path where that was installed.  For me: `C:\Program Files\PackageManagement\NuGet\Packages`
+  * Set the path to that nuget package (the .dll within the package) in function `load-sqllite-type`.
+* Set the path to TimeTracker.db (starter database included in this repo) in function `get-open-connection`.  If you ever need to recreate that database, it just has one table:
   * `create table Table1(DateTimeIn int, DateTimeOut int, Hours real, Comment varchar(512));`
 * Add TimeTracker.psm1 to PowerShell profile.  To configure a profile and reference a separate psm1 file, see this old post (which is still relevant for PowerShell Core) https://codejournal.blogspot.com/2018/08/using-powershell-as-command-alias-runner.html.  For redirecting to a file in a location of your choice, see https://stackoverflow.com/questions/5095509/is-it-possible-to-change-the-default-value-of-profile-to-a-new-value (see Root Loop's answer).
 * Test configuration by opening powershell and calling the ClockStatus function.
