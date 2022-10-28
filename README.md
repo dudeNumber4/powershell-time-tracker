@@ -6,7 +6,7 @@ Simple time tracking system (tracks hours).  Currently reports time by week.  Co
 * ~~SQLite nuget package for .Net core.  https://www.nuget.org/packages/System.Data.SQLite/~~
 * SQLite nuget package for .Net Framework (legacy.  Why?  No !@#$ing idea): https://www.nuget.org/packages/Stub.System.Data.SQLite.Core.NetFramework/
   * (Why "stub"?  No @#$%ing idea)
-* While there are no other dependencies, having the SQLite tools would be handy.  For instance, currently, if you call ClockIn and there is already an uncommitted task, the error will tell you that some task hasn't been finished, "Fix it."  Without SQLite, you wouldn't be able to manually go into the table and remove the uncommitted task if it's something you wanted to just delete.  You would probably have to issue 'ClockOut "disregard this task"'.  Here are the functions that would be handy for non-SQLite users (if anyone ever requests them, I will add, but I just do these manually in those rare circumstances):
+* While there are no other dependencies, having the SQLite tools would be handy ("command-line shell" [here](https://www.sqlite.org/download.html)).  For instance, currently, if you call ClockIn and there is already an uncommitted task, the error will tell you that some task hasn't been finished, "Fix it."  Without SQLite, you wouldn't be able to manually go into the table and remove the uncommitted task if it's something you wanted to just delete.  You would probably have to issue `ClockOut "disregard this task"`.  Here are the functions that would be handy for non-SQLite users (if anyone ever requests them, I will add, but I just do these manually in those rare circumstances):
   * ClockDeleteCurrentTask
   * ClockDeleteTasks Date
 
